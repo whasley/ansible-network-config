@@ -1,0 +1,13 @@
+- hosts: all
+  gather_facts: False
+  pre_tasks:
+    - name: "Install python 2 when not installed"
+      raw: "test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)"
+      changed_when: false
+
+    - name: "Gather facts"
+      setup:
+  roles:
+    - role: prepare-host
+      network_manage_devices: yes
+

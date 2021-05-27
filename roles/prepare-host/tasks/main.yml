@@ -1,0 +1,123 @@
+---
+- name: upgrade apt packages
+  apt:
+    update_cache: yes
+    upgrade: dist
+    autoremove: yes
+    cache_valid_time: 3600
+  tags:
+    - apt-upgrade
+
+- name: ensure basic packages are installed
+  apt: pkg={{ item }} state=present
+  with_items:
+    - bridge-utils
+    - debootstrap
+    - ifenslave
+    - ifenslave-2.6
+    - lsof
+    - lvm2
+    - tcpdump
+    - vlan
+    - ipmitool
+  tags: 
+    - installation
+
+- name: load appropriate kernel modules
+  lineinfile:
+    dest: /etc/modules
+    line: "{{ item }}"
+  with_items:
+    - 8021q
+    - bonding
+    - ipmi_devintf
+    - ipmi_si
+    - ip_nat_tftp
+    - ip_conntrack_tftp
+  tags:
+    - installation
+
+- name: create directory
+  file:
+    path: "{{ network_interface_path }}"
+    state: directory
+  when: network_interfaces
+
+- name: all interfaces
+  template:
+    src: all_interfaces.j2
+    dest: "{{ network_all_interfaces_path }}"
+  when: network_interfaces
+
+- name: list network interfaces
+  command: "find {{ network_interface_path }} -type f"
+  changed_when: no
+  when: network_interfaces
+  register: network_existing_files
+
+- name: configurations
+  template:
+    src: device.j2
+    dest: "{{ network_interface_path }}/device-{{ item.0 }}"
+  with_items:
+    - "{{network_interfaces | default([]) | groupby('device') }}"
+  register: network_configuration_result
+
+- name: configured files
+  set_fact:
+    network_configured_files: >
+      [{% for item in network_configuration_result.results | default([]) -%}
+        u"{{ item.dest | default(item.path) }}"
+        {{ '' if loop.last else ',' }}
+      {%- endfor %}]
+
+- name: remove configurations
+  file:
+    dest: "{{ item }}"
+    state: absent
+  when: >
+    network_manage_devices
+    and (item not in network_configured_files)
+  with_items: "{{network_existing_files.stdout_lines | default([])}}"
+
+#- name: enable networking verbose mode
+#  lineinfile:
+#    dest: "/etc/default/networking"
+#    line: "VERBOSE=yes"
+#    state: present
+#    create: yes
+
+- name: restart devices
+# schema: network_configuration_result.results
+#   = [ { "item": [ <device>, [<config>, ...] ], ... }, ... ]
+  service:
+    name: "{{ network_service }}"
+    state: restarted
+    arguments: "INTERFACE={{ item.item.0 }}"
+  when: >
+    restart_devices
+    and item.changed
+    and item.item.1.0.auto | default(true)
+  with_items: "{{network_configuration_result.results}}"
+
+
+# NOTE (whasley) Isso eh usado para criar usuarios
+# definidos em roles/prepare-hosts/users.yml
+
+#- include_vars: users.yml
+#  tags:
+#    - create-users
+#
+#- name: create users
+#  user:
+#    name: "{{ item.name }}"
+#    password: "{{ item.password }}"
+#    groups: "sudo,adm"
+#    state: present
+#    shell: /bin/bash
+#  with_items: "{{ users }}"
+#  tags:
+#    - create-users
+#  no_log: True
+#
+

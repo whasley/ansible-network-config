@@ -1,0 +1,12 @@
+network_interfaces:
+
+  - device: eno49
+    method: static
+    address: 10.11.64.1
+    netmask: 255.255.255.0
+    gateway: 10.11.64.254
+    dns_search: lsd.ufcg.edu.br
+    nameservers:
+      - 10.20.6.1
+      - 10.20.6.2
+
